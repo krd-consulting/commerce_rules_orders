@@ -63,7 +63,8 @@ function commerce_rules_orders_user_has_orders_this_week($user) {
     ->entityCondition('entity_type', 'commerce_order', '=')
     ->propertyCondition('placed', $first_day ,'>=')
     ->propertyCondition('placed', $last_day ,'<')
-    ->propertyCondition('uid', $user->uid, '=');
+    ->propertyCondition('uid', $user->uid, '=')
+    ->propertyCondition('status', array('paid', 'completed'), 'IN');
 
   $orders = $query->execute();
 
