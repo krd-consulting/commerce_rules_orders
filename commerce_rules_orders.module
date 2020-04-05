@@ -6,12 +6,45 @@ function commerce_rules_orders_rules_condition_info() {
   return array(
     'commerce_rules_orders_user_has_orders_this_week' => array(
       'label' => t('Has orders this week'),
+      'group' => t('Commerce Rules Orders'),
       'arguments' => array(
         'user_id' => array('type' => 'user', 'label' => t('The user of concern.')),
       ),
       'module' => 'commerce_rules_orders',
     ),
   );
+}
+
+/**
+ * Implementation of hook_rules_action_info().
+ */
+function commerce_rules_orders_rules_action_info() {
+  $items = array();
+
+  $items['commerce_rules_orders_rules_apply_limited_discount'] = array(
+    'label' => 'Apply Limited Discount',
+    'arguments' => array(
+      'entity' => array(
+        'label' => t('Order'),
+        'type' => 'entity',
+        'wrapped' => TRUE,
+      ),
+      'commerce_discount' => array(
+        'label' => t('Commerce Discount'),
+        'type' => 'token',
+        'options list' => 'commerce_discount_entity_list',
+      ),
+      'maximum_discount' => array(
+        'label' => t('Maximum discount'),
+        'type' => 'commerce_price'
+      ),
+    ),
+    'group' => t('Commerce Rules Orders'),
+    'base' => 'commerce_rules_orders_rules_apply_limited_discount',
+    'module' => 'commerce_rules_orders'
+  );
+
+  return $items;
 }
 
 function commerce_rules_orders_user_has_orders_this_week($user) {
@@ -24,8 +57,63 @@ function commerce_rules_orders_user_has_orders_this_week($user) {
     ->entityCondition('entity_type', 'commerce_order', '=')
     ->propertyCondition('placed', $first_day ,'>=')
     ->propertyCondition('placed', $last_day ,'<');
+    // add user condition
 
   $orders = $query->execute();
 
   return count($orders) > 0;
+}
+
+function commerce_rules_orders_rules_apply_limited_discount(EntityDrupalWrapper $wrapper, $discount_name, $maximum_discount) {
+  $discount_wrapper = entity_metadata_wrapper('commerce_discount', $discount_name);
+  $rate = $discount_wrapper->commerce_discount_offer->commerce_percentage->value() / 100;
+  // Get the line item types to apply the discount to.
+  $line_item_types = variable_get('commerce_discount_line_item_types', array_diff(commerce_product_line_item_types(), array('product_discount')));
+  // Filter out 0 values in the variable.
+  $line_item_types = array_filter($line_item_types);
+
+  // Exit if there are no line items or the wrapper doesn't contain
+  // the commerce_discounts property.
+  if (!isset($wrapper->commerce_discounts) || !$wrapper->commerce_line_items->value()) {
+    return;
+  }
+
+  // Set reference to the discount.
+  // @todo: It doesn't work with the wrapper.
+  $order = $wrapper->value();
+  $delta = $wrapper->commerce_discounts->count();
+  $order->commerce_discounts[LANGUAGE_NONE][$delta]['target_id'] = $discount_wrapper->discount_id->value();
+
+  $calculated_discount = 0;
+  // Loop the line items of the order and calculate the total discount.
+  foreach ($wrapper->commerce_line_items as $line_item_wrapper) {
+    // Check if the line item is configured in the discount settings to
+    // apply the discount.
+    $line_item_type = $line_item_wrapper->getBundle();
+    if (in_array($line_item_type, $line_item_types, TRUE)) {
+      $line_item_total = commerce_price_wrapper_value($line_item_wrapper, 'commerce_total', TRUE);
+      $calculated_discount += $line_item_total['amount'] * $rate;
+    }
+  }
+
+  if($calculated_discount > (int)$maximum_discount['amount']) {
+    $calculated_discount = (int)$maximum_discount['amount'];
+  }
+
+  if ($calculated_discount) {
+    $discount_amount = array(
+      'amount' => $calculated_discount * -1,
+      'currency_code' => $wrapper->commerce_order_total->currency_code->value(),
+    );
+
+    // Modify the existing discount line item or add a new line item
+    // if that fails.
+    if (!commerce_discount_set_existing_line_item_price($wrapper, $discount_name, $discount_amount)) {
+      commerce_discount_add_line_item($wrapper, $discount_name, $discount_amount);
+    }
+
+    // Update the total order price, for the next rules condition (if any).
+    commerce_discount_calculate_order_total($wrapper);
+  }
+
 }
