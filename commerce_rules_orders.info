@@ -1,0 +1,8 @@
+name = Commerce Rules Orders
+description = "Extra rules and fields for commerce orders."
+package = Commerce Contrib
+core = 7.x
+
+; Dependencies
+dependencies[] = commerce
+dependencies[] = rules

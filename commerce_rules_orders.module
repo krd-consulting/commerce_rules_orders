@@ -1,0 +1,31 @@
+<?php
+/**
+ * implementation of hook_rules_condition_info()
+ */
+function commerce_rules_orders_rules_condition_info() {
+  return array(
+    'commerce_rules_orders_user_has_orders_this_week' => array(
+      'label' => t('Has orders this week'),
+      'arguments' => array(
+        'user_id' => array('type' => 'user', 'label' => t('The user of concern.')),
+      ),
+      'module' => 'commerce_rules_orders',
+    ),
+  );
+}
+
+function commerce_rules_orders_user_has_orders_this_week($user) {
+  $query = new EntityFieldQuery();
+
+  $first_day = strtotime('sunday last week');
+  $last_day = strtotime('sunday this week');
+
+  $query
+    ->entityCondition('entity_type', 'commerce_order', '=')
+    ->propertyCondition('placed', $first_day ,'>=')
+    ->propertyCondition('placed', $last_day ,'<');
+
+  $orders = $query->execute();
+
+  return count($orders) > 0;
+}
