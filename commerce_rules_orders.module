@@ -50,8 +50,14 @@ function commerce_rules_orders_rules_action_info() {
 function commerce_rules_orders_user_has_orders_this_week($user) {
   $query = new EntityFieldQuery();
 
-  $first_day = strtotime('sunday last week');
-  $last_day = strtotime('sunday this week');
+  if(date('D') == 'Sun') {
+    $first_day = strtotime('sunday this week');
+    $last_day = strtotime('sunday next week');
+  } else {
+    $first_day = strtotime('sunday last week');
+    $last_day = strtotime('sunday this week');
+  }
+
 
   $query
     ->entityCondition('entity_type', 'commerce_order', '=')
